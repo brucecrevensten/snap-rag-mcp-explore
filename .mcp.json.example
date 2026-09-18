@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "alaska-climate": {
+      "type": "stdio",
+      "command": "/ABSOLUTE/PATH/TO/envs/lane1/bin/python",
+      "args": ["/ABSOLUTE/PATH/TO/snap-rag-mcp-explore/mcp_server.py"]
+    }
+  }
+}

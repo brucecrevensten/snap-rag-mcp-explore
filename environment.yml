@@ -1,0 +1,14 @@
+# Environment for the Lane 1 retrieval prototype.
+#   create:   mamba env create -f environment.yml
+#   use:      mamba activate lane1
+#   update:   mamba env update -f environment.yml   (after editing this file)
+name: lane1
+channels:
+  - conda-forge
+dependencies:
+  - python=3.13
+  - owslib>=0.36      # talks to GeoNetwork over CSW, parses ISO 19115 XML
+  - chromadb>=1.5     # local vector store; embeds with a bundled MiniLM model
+  - lxml              # used when inspecting raw ISO XML by hand
+  - ipython           # nicer interactive shell for poking at records
+  - mcp>=2.2          # Model Context Protocol SDK: mcp_server.py exposes tools to Claude
