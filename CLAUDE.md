@@ -49,6 +49,12 @@ We are prototyping Lane 1 locally with open-source tools only.
   dataset...), DOIs in record text, and the earthmaps.io doc pages; typed and
   APA-formatted via doi.org -> references.json. 2026-09-18: 31/62 datasets
   cite something; 37 refs (29 publications, 5 datasets, 3 other).
+- `ingest_api_docs.py`: the 25 earthmaps.io service pages -> heading-based
+  sections (tables become "bui | Numeric rating ..." lines) -> "api_docs"
+  collection, 295 chunks; only ~12 pages link catalog records, so
+  `lane1.search_docs()` returns doc passages on their own (CLI `--docs`, MCP
+  search_datasets `documentation`), while linked ones also count for their
+  datasets after `DOC_PENALTY`. `linked_hits()` serves both papers and docs.
 - `ingest_papers.py`: publications -> OpenAlex -> legal OA PDF (pypdf, reference
   list cut) or abstract or citation -> token chunks -> "papers" collection,
   metadata links back to citing datasets (dataset_uuids). 2026-09-18: 6 full

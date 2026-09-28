@@ -9,6 +9,7 @@ Usage:
     python ask_all.py --csv results.csv    # also save the table for a spreadsheet
     python ask_all.py --list-datasets      # every dataset title in the index
     python ask_all.py --papers             # also match papers the datasets cite
+    python ask_all.py --docs               # also match the Data API's documentation
 
 Question file: one question per line; blank lines and lines starting with #
 are skipped. To score a question, add " | " and the expected dataset:
@@ -79,6 +80,8 @@ def main():
                    help="for questions naming a place, only datasets whose extent contains it")
     p.add_argument("--papers", action="store_true",
                    help="also match the papers datasets cite (after ingest_papers.py)")
+    p.add_argument("--docs", action="store_true",
+                   help="also match the Data API docs (after ingest_api_docs.py)")
     args = p.parse_args()
 
     datasets = all_datasets()
@@ -107,11 +110,12 @@ def main():
     if any(points):
         # A different spatial filter per question, so search them one at a time.
         results = [lane1.search_many([q], k=depth, section=args.section,
-                                     per="dataset", point=pt, papers=args.papers)[0]
+                                     per="dataset", point=pt, papers=args.papers,
+                                     docs=args.docs)[0]
                    for q, pt in zip(questions, points)]
     else:
         results = lane1.search_many(questions, k=depth, section=args.section, per="dataset",
-                                    papers=args.papers)
+                                    papers=args.papers, docs=args.docs)
 
     # One row per (question, retrieved dataset), top k only.
     rows, scores = [], []   # scores: rank where the expected dataset was found, or None

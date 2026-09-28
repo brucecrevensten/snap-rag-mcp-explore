@@ -46,11 +46,13 @@ INDEX_DIR = "./lane1_index"
 COLLECTION = "geonetwork_metadata"
 PLACES_COLLECTION = "places"   # gazetteer, kept apart so places never crowd out datasets
 PAPERS_COLLECTION = "papers"   # papers datasets cite (ingest_papers.py), also kept apart
+DOCS_COLLECTION = "api_docs"   # the Data API's own documentation (ingest_api_docs.py)
 # Added to a paper passage's distance before it competes with catalog records.
 # Papers are evidence FOR a dataset, not the dataset itself; long reports have
 # so many chunks that one of them lands near almost any question. Tuned by
 # comparing hit rates with ask_all.py --papers (see README).
 PAPER_PENALTY = 0.1
+DOC_PENALTY = 0.1      # same idea for the API's documentation pages
 OVERLAP_TOKENS = 40   # tokens shared by neighbouring chunks, so a sentence cut
                       # at a chunk boundary still appears whole in one of them
 
@@ -418,26 +420,29 @@ def open_collection(create=False, name=COLLECTION):
                          f"    rm -rf {INDEX_DIR}")
 
 
-def paper_hits(questions, n, point=None):
-    """Search the ingested papers (see ingest_papers.py) and turn each matching
-    passage into a hit for every dataset that cites that paper.
+def linked_hits(collection_name, questions, n, penalty, point=None):
+    """Search a collection of material ABOUT datasets -- the papers they cite
+    (ingest_papers.py) or the Data API's documentation (ingest_api_docs.py) --
+    and turn each matching passage into a hit for every dataset it links to.
 
+    Both collections store `dataset_uuids`, so one routine serves both.
     Returns one list of (document, metadata, distance) per question, shaped
-    like dataset hits: the dataset's uuid/title/url/extent, plus section
-    "paper" (or "abstract") and the paper's citation, DOI and page.
-    Empty lists if no papers have been ingested yet.
+    like dataset hits: the dataset's uuid/title/url/extent, plus the passage
+    and its citation. `penalty` is added to the distance, because a passage is
+    evidence FOR a dataset, not the dataset's own description. Empty lists if
+    nothing has been ingested into that collection yet.
     """
     try:
-        papers = open_collection(name=PAPERS_COLLECTION)
+        collection = open_collection(name=collection_name)
     except (chromadb.errors.NotFoundError, SystemExit):
         return [[] for _ in questions]
-    res = papers.query(query_texts=list(questions), n_results=min(n, papers.count()))
-    # What each citing dataset looks like (title, landing URL, extent).
-    cited = sorted({u for metas in res["metadatas"] for m in metas
-                    for u in m["dataset_uuids"].split(",") if u})
+    res = collection.query(query_texts=list(questions), n_results=min(n, collection.count()))
+    # What each linked dataset looks like (title, landing URL, extent).
+    linked = sorted({u for metas in res["metadatas"] for m in metas
+                     for u in m["dataset_uuids"].split(",") if u})
     datasets = {}
-    if cited:
-        for m in open_collection().get(where={"uuid": {"$in": cited}},
+    if linked:
+        for m in open_collection().get(where={"uuid": {"$in": linked}},
                                        include=["metadatas"])["metadatas"]:
             datasets.setdefault(m["uuid"], m)
     results = []
@@ -447,21 +452,36 @@ def paper_hits(questions, n, point=None):
             for uuid in filter(None, m["dataset_uuids"].split(",")):
                 d = datasets.get(uuid)
                 if d is None:
-                    continue                  # cited by a dataset that isn't in the index
+                    continue                  # links to a dataset that isn't in the index
                 if point and places.covers(d, *point) is not True:
                     continue                  # same rule as the dataset filter
                 meta = {k: d[k] for k in ("uuid", "title", "url", "west", "east", "south", "north")
                         if k in d}
                 meta.update({k: m[k] for k in ("section", "chunk", "n_chunks", "section_text",
-                                               "paper_title", "citation", "doi", "page",
-                                               "full_text")})
-                meta["paper_distance"] = dist          # before the penalty, for display
-                hits.append((doc, meta, dist + PAPER_PENALTY))
+                                               "citation", "doi", "page", "full_text")
+                             if k in m})
+                meta["source_distance"] = dist         # before the penalty, for display
+                hits.append((doc, meta, dist + penalty))
         results.append(hits)
     return results
 
 
-def search_many(questions, k=5, section=None, per="section", point=None, papers=False):
+def search_docs(questions, k=3):
+    """Documentation passages in their own right, for "what does bui mean?"
+    questions. Needed because only about half the API's pages link to a
+    catalog record, so the rest can never surface via a dataset.
+    Returns one list of (document, metadata, distance) per question."""
+    try:
+        collection = open_collection(name=DOCS_COLLECTION)
+    except (chromadb.errors.NotFoundError, SystemExit):
+        return [[] for _ in questions]
+    res = collection.query(query_texts=list(questions), n_results=min(k, collection.count()))
+    return [list(zip(docs, metas, dists)) for docs, metas, dists
+            in zip(res["documents"], res["metadatas"], res["distances"])]
+
+
+def search_many(questions, k=5, section=None, per="section", point=None, papers=False,
+                docs=False):
     """Search for several questions at once; return one result list per question.
 
     Each result is (document, metadata, distance), nearest first.
@@ -472,6 +492,8 @@ def search_many(questions, k=5, section=None, per="section", point=None, papers=
     point=(lat, lon): only datasets whose bounding box contains that point.
     papers=True: also search the papers datasets cite; a matching passage
     counts as a hit for the citing dataset(s), marked section "paper".
+    docs=True: the same for the Data API's documentation pages, marked
+    section "api_docs".
     """
     collection = open_collection()
     conditions = [{"section": section}] if section else []
@@ -486,9 +508,13 @@ def search_many(questions, k=5, section=None, per="section", point=None, papers=
     n = min(k * 10, collection.count())
     # Chroma embeds all the questions in one batch and searches for each.
     res = collection.query(query_texts=list(questions), n_results=n, where=where)
-    # Papers aren't a record section, so a --section filter leaves them out.
-    extra = (paper_hits(questions, n, point) if papers and not section
-             else [[] for _ in questions])
+    # Neither is a record section, so a --section filter leaves them out.
+    extra = [[] for _ in questions]
+    for use, name, penalty in [(papers, PAPERS_COLLECTION, PAPER_PENALTY),
+                               (docs, DOCS_COLLECTION, DOC_PENALTY)]:
+        if use and not section:
+            for hits, more in zip(extra, linked_hits(name, questions, n, penalty, point)):
+                hits += more
     results = []
     for docs, metas, dists, more in zip(res["documents"], res["metadatas"],
                                         res["distances"], extra):
@@ -509,7 +535,7 @@ def search_many(questions, k=5, section=None, per="section", point=None, papers=
                 meta["supporting_paper"] = {
                     "citation": paper["citation"], "doi": paper["doi"], "page": paper["page"],
                     "passage": doc.split("\n\n", 1)[-1],
-                    "distance": round(paper["paper_distance"], 3)}
+                    "distance": round(paper["source_distance"], 3)}
         results.append(top)
     return results
 
@@ -543,19 +569,29 @@ def cmd_search(args):
     elif point:
         print(f"--spatial: only datasets whose extent contains {point[0]:.3f}, {point[1]:.3f}")
     hits = search_many([args.question], k=args.k, section=args.section, point=point,
-                       papers=args.papers)[0]
+                       papers=args.papers, docs=args.docs)[0]
     for rank, (doc, meta, dist) in enumerate(hits, 1):
         print(f"\n#{rank}  distance={dist:.3f}  [{meta['section']}]  {meta['title']}"
               f"{coverage_mark(meta, place)}")
         print(f"    source: {meta['url']}")
-        if "citation" in meta:        # matched a paper this dataset cites
-            print(f"    via {meta['section']} (page {meta['page']}): {meta['citation'][:160]}")
+        if "citation" in meta:        # matched a paper or a documentation page
+            page = f" (page {meta['page']})" if meta.get("page") else ""
+            print(f"    via {meta['section']}{page}: {meta['citation'][:160]}")
         print(f"    matched chunk {meta['chunk'] + 1} of {meta['n_chunks']}")
         # --brief: just the chunk that matched. Default: the whole section.
         text = doc.split("\n\n", 1)[-1] if args.brief else meta["section_text"]
         for line in text.splitlines():
             for piece in textwrap.wrap(line, 90) or [""]:
                 print("    " + piece)
+
+    if args.docs:      # documentation pages that explain variables, units, methods
+        found = search_docs([args.question], k=3)[0]
+        if found:
+            print("\n--- Data API documentation")
+        for doc, meta, dist in found:
+            print(f"\n  distance={dist:.3f}  {meta['page_title']} > {meta['heading']}")
+            print(f"    {meta['url']}")
+            print(textwrap.indent(textwrap.shorten(doc.split("\n\n", 1)[-1], 300), "    "))
 
 
 def cmd_harvest_places(args):
@@ -625,6 +661,8 @@ def main():
                    help="only datasets whose extent contains the place named in the question")
     s.add_argument("--papers", action="store_true",
                    help="also match the papers datasets cite (after ingest_papers.py)")
+    s.add_argument("--docs", action="store_true",
+                   help="also match the Data API's documentation (after ingest_api_docs.py)")
     hp = sub.add_parser("harvest-places",
                         help="download the place-name gazetteer and embed it")
     hp.add_argument("--no-embed", action="store_true",

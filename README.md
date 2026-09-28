@@ -30,6 +30,7 @@ at the University of Alaska Fairbanks, in two "lanes":
 | `places.py` | Alaska-only gazetteer from `earthmaps.io/places/all`: finds place names in a question (including Indigenous and former names, e.g. *Mamterilleq* = Bethel) and checks whether a dataset's extent covers a place. |
 | `ask_all.py` | Runs every question in `questions.txt` against the index and prints a table; if you add expected answers, it scores hit@1 / hit@k. |
 | `list_references.py` | Lists every academic reference each catalog dataset cites (record links, DOIs in the text, and the Data API's documentation pages), with APA citations from doi.org. Writes `references.json`. |
+| `ingest_api_docs.py` | Indexes the Data API's own documentation pages (variable definitions, units, models, scenarios, caveats), linked to the catalog records each page describes. |
 | `ingest_papers.py` | Fetches those papers (legal open-access PDFs only; otherwise the abstract or citation), chunks and embeds them, each chunk linked back to the datasets that cite the paper. |
 | `mcp_server.py` | The MCP server: `find_place`, `search_datasets`, `get_dataset`, `get_climate_data`. |
 | `questions.txt` | Example questions to test retrieval with. |
@@ -106,6 +107,24 @@ When will average temperatures extend the growing season for potatoes? | DOF/DOT
 `python ask_all.py --list-datasets` prints every title in the index to copy from.
 `--spatial` and `--csv results.csv` also work.
 
+### Adding the Data API's documentation
+
+The pages at `earthmaps.io/<service>/` explain what each service serves:
+what `bui` or `dmc` mean, units, which models and scenarios, caveats. None of
+that is in the catalog records. Index them (about 25 pages, a few seconds):
+
+```bash
+python ingest_api_docs.py
+```
+
+Then `--docs` searches them. Roughly half the pages link to catalog records, so
+a matching passage also points at those datasets (after `DOC_PENALTY`); the
+rest are still returned as documentation in their own right:
+
+```bash
+python lane1.py search "What does the buildup index bui mean?" --docs --brief
+```
+
 ### Adding the papers the datasets cite
 
 List every reference each dataset cites (about 40 seconds; writes `references.json`):
@@ -146,7 +165,7 @@ works too.
 | Tool | Does |
 |---|---|
 | `find_place` | Alaska communities (points) and areas (polygons: boroughs, watersheds, game management units, protected areas, ethnolinguistic regions...), including Indigenous and former names. |
-| `search_datasets` | Lane 1 search, optionally keeping only datasets that cover a place. Includes passages from the papers each dataset cites (with citation and DOI) once `ingest_papers.py` has run. |
+| `search_datasets` | Lane 1 search, optionally keeping only datasets that cover a place. Includes passages from the papers each dataset cites (with citation and DOI) once `ingest_papers.py` has run, and passages from the Data API's documentation (under `documentation`) once `ingest_api_docs.py` has. |
 | `get_dataset` | A dataset's full catalog record: methods, limitations, license, DOIs. |
 | `get_climate_data` | Live values from earthmaps.io for an Alaska place: temperature and precipitation, climate indicators, heating degree days, freezing and thawing indices, permafrost, snowfall, wet days, CMIP6 fire weather indices, ALFRESCO flammability and vegetation type, and current wildfire conditions. Long series are summarised to fit an agent's context: yearly values by decade, daily fire-season values by month. |
 

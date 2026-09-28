@@ -364,6 +364,8 @@ Workflow:
    get_dataset for a full record. `via_paper` means the dataset was found through
    a passage of a paper it cites; `supporting_paper` is the closest passage from a
    paper it cites. Use those passages for findings and methods, and cite the paper.
+   `documentation` holds passages from the Data API's own pages: use them to explain
+   what a variable, index or option means, citing the page URL.
 3. For numbers -> get_climate_data. Never state a climate value that did not come
    from get_climate_data in this conversation.
 
@@ -416,20 +418,23 @@ def find_place(name: str) -> dict[str, Any]:
 
 @mcp.tool()
 def search_datasets(question: str, place: str | None = None, k: int = 5,
-                    include_papers: bool = True) -> dict[str, Any]:
+                    include_papers: bool = True, include_docs: bool = True) -> dict[str, Any]:
     """Find SNAP/UAF climate datasets that fit a question about Alaska: temperature,
     precipitation, snow, permafrost, sea ice, wildfire, vegetation, hydrology,
     wind, degree days, climate indicators and more. Returns each dataset's title,
     catalog link and the part of its metadata that matched (description, methods,
     usage limits). Give `place` (an id or name from find_place) to keep only
-    datasets whose extent covers that place. Also searches the papers the
+    datasets whose extent covers that place. Also searches the Data API's own
+    documentation (include_docs) -- variable definitions, units, models,
+    scenarios and caveats, returned under `documentation` -- and the papers the
     datasets cite (include_papers): a dataset can be found through a passage of
     its paper, shown in `via_paper` with the paper's citation and DOI. Use to
     choose datasets and to explain methods, scenarios, baselines, findings and
     caveats; use get_climate_data for numbers."""
     try:
         p = resolve(place) if place else None
-        hits = lane1.search_many([question], k=k * 3, per="dataset", papers=include_papers)[0]
+        hits = lane1.search_many([question], k=k * 3, per="dataset", papers=include_papers,
+                                 docs=include_docs)[0]
         results = []
         for doc, meta, dist in hits:
             coverage = covers(meta, p)
@@ -453,9 +458,15 @@ def search_datasets(question: str, place: str | None = None, k: int = 5,
             results.append(result)
             if len(results) == k:
                 break
+        documentation = []
+        if include_docs:
+            for doc, meta, dist in lane1.search_docs([question], k=3)[0]:
+                documentation.append({
+                    "page": meta["page_title"], "heading": meta["heading"], "url": meta["url"],
+                    "distance": round(dist, 3), "text": doc.split("\n\n", 1)[-1][:1200]})
         return {"question": question,
                 "place": place_info(p, with_polygon=False) if p else None,
-                "datasets": results,
+                "datasets": results, "documentation": documentation,
                 "note": "distance: lower = closer match. covers_place null = extent unknown.",
                 "attribution": {"provider": PROVIDER, "license": LICENSE,
                                 "catalog": "https://catalog.snap.uaf.edu/geonetwork"}}
