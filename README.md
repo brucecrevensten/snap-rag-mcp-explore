@@ -148,7 +148,14 @@ works too.
 | `find_place` | Alaska communities (points) and areas (polygons: boroughs, watersheds, game management units, protected areas, ethnolinguistic regions...), including Indigenous and former names. |
 | `search_datasets` | Lane 1 search, optionally keeping only datasets that cover a place. Includes passages from the papers each dataset cites (with citation and DOI) once `ingest_papers.py` has run. |
 | `get_dataset` | A dataset's full catalog record: methods, limitations, license, DOIs. |
-| `get_climate_data` | Live values from earthmaps.io for an Alaska place: temperature and precipitation, climate indicators, heating degree days, freezing and thawing indices, permafrost, snowfall, wet days. Yearly series are averaged by decade to fit an agent's context. |
+| `get_climate_data` | Live values from earthmaps.io for an Alaska place: temperature and precipitation, climate indicators, heating degree days, freezing and thawing indices, permafrost, snowfall, wet days, CMIP6 fire weather indices, ALFRESCO flammability and vegetation type, and current wildfire conditions. Long series are summarised to fit an agent's context: yearly values by decade, daily fire-season values by month. |
+
+Some topics take options: `fire_weather` needs a year range (`start_year`,
+`end_year`, within 1980-2100) and accepts `variables` (any of `bui`, `dc`,
+`dmc`, `ffmc`, `fwi`, `isi`) and `operation`
+(`summer_fire_danger_rating_days`, the default, or a 3/5/7-day rolling
+average). Asking for an option a topic doesn't have returns an error saying
+which topics do. Fire weather area queries take watershed (HUC) ids only.
 
 Every result includes an **attribution** block: the exact query URL, the catalog
 records and reference DOIs listed on the Data API's own documentation pages,

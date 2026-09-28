@@ -19,6 +19,8 @@ import functools
 import json
 import os
 import re
+import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 from typing import Any, Literal
@@ -102,6 +104,49 @@ TOPICS = {
                  "projected models.",
         "units": "wdpy: days per year",
         "point": "/wet_days_per_year/all/point/{lat}/{lon}", "doc": "/wet_days_per_year/"},
+    "fire_weather": {
+        "about": "Canadian Forest Fire Weather Index (FWI) System indices from "
+                 "bias-corrected CMIP6 daily data and ERA5 reanalysis, 1980-2100, "
+                 "April 1 - October 31, 0.25 degrees, North American boreal ecoregion "
+                 "only. Needs a year range; pick the indices with `variables` and the "
+                 "summary with `operation`.",
+        "units": "index values (unitless ratings); fire danger days: days per year",
+        "point": "/fire_weather/point/{lat}/{lon}/{start}/{end}",
+        "area": "/fire_weather/area/{id}/{start}/{end}",
+        "doc": "/fire_weather/",
+        "years": (1980, 2100), "default_years": (2030, 2050),
+        "variables": ["bui", "dc", "dmc", "ffmc", "fwi", "isi"],
+        "operations": ["summer_fire_danger_rating_days", "3_day_rolling_average",
+                       "5_day_rolling_average", "7_day_rolling_average"],
+        "area_note": "fire_weather area queries take watershed (HUC) ids; boroughs and "
+                     "game management units return 404. Use a community inside the area.",
+        "slow_note": "The rolling averages return every day of the fire season for every "
+                     "model; they take ~20s and are summarised here to monthly means. "
+                     "Pass `variables` to keep them small."},
+    "wildfire_flammability": {
+        "about": "ALFRESCO modelled relative flammability at 1 km, as 30-year era means: "
+                 "historical (CRU TS 4.0, 1950-1979 and 1980-2008) and projections "
+                 "2010-2099 from GFDL-CM3, GISS-E2-R, IPSL-CM5A-LR, MRI-CGCM3, "
+                 "NCAR-CCSM4 and a 5-model average under RCP 4.5, 6.0 and 8.5. A point "
+                 "query returns the intersecting HUC-12 watershed: single ALFRESCO "
+                 "pixels are not meaningful on their own.",
+        "units": "average number of times a pixel burned per year (0-1)",
+        "point": "/alfresco/flammability/local/{lat}/{lon}",
+        "area": "/alfresco/flammability/area/{id}", "doc": "/alfresco/"},
+    "vegetation_type": {
+        "about": "ALFRESCO modelled vegetation composition at 1 km, as 30-year era means "
+                 "(same models, scenarios and eras as wildfire_flammability). A point "
+                 "query returns the intersecting HUC-12 watershed.",
+        "units": "percent of area per vegetation type",
+        "point": "/alfresco/veg_type/local/{lat}/{lon}",
+        "area": "/alfresco/veg_type/area/{id}", "doc": "/alfresco/"},
+    "wildfire_now": {
+        "about": "Near-real-time wildfire conditions at a point (NOT climate "
+                 "projections): today's fire danger rating and snow cover, PM2.5 air "
+                 "quality over the last 6-48 hours, currently active fires nearby with "
+                 "cause and size, land cover, and projected relative flammability.",
+        "units": "aqi: US AQI; pm25_conc: ug/m3; fire size: acres",
+        "point": "/fire/point/{lat}/{lon}", "doc": "/fire/", "trim": "fires"},
 }
 Topic = Literal[tuple(TOPICS)]
 
@@ -228,7 +273,30 @@ def covers(meta, p):
 # ------------------------------------------------- shrinking API responses
 
 YEAR = re.compile(r"^\d{4}$")
+DAY_OF_YEAR = re.compile(r"^\d{2}-\d{2}$")
+MONTHS = ["January", "February", "March", "April", "May", "June",
+          "July", "August", "September", "October", "November", "December"]
 SPREAD_STATS = {"median", "q1", "q3", "hi_std", "lo_std"}
+
+
+def summarize_fires(data):
+    """The wildfire_now response lists every nearby fire as GeoJSON with a prose
+    summary: ~18 KB of mostly geometry. Keep what a person would ask about."""
+    if not isinstance(data, dict):
+        return data
+    out = dict(data)
+    for key in ("fire_points", "fire_polygons"):
+        features = out.get(key)
+        if not isinstance(features, list):
+            continue
+        fires = []
+        for f in features[:15]:
+            p = f.get("properties", {})
+            fires.append({"name": p.get("NAME"), "cause": p.get("CAUSE"),
+                          "acres": p.get("acres"), "active": p.get("active") == "1",
+                          "summary": (p.get("SUMMARY") or "")[:300]})
+        out[key] = {"count": len(features), "showing": len(fires), "fires": fires}
+    return out
 
 
 def mean_of(values):
@@ -245,19 +313,28 @@ def mean_of(values):
 
 def compact(x):
     """Make a response fit an agent's context without changing what it says:
-    long yearly series become decade means, spread statistics are dropped
-    (min/mean/max kept), numbers are rounded."""
+    long yearly series become decade means, day-of-year series become monthly
+    means, spread statistics are dropped (min/mean/max kept), numbers rounded."""
     if isinstance(x, dict):
         if len(x) > 20 and all(YEAR.match(str(k)) for k in x):
             decades = {}
             for year, value in x.items():
                 decades.setdefault(f"{str(year)[:3]}0s", []).append(value)
             return {d: compact(mean_of(v)) for d, v in decades.items()}
+        if len(x) > 20 and all(DAY_OF_YEAR.match(str(k)) for k in x):
+            # Fire weather gives every day from 04-01 to 10-31, per model and
+            # index: hundreds of kilobytes. Monthly means say the same thing.
+            months = {}
+            for day, value in x.items():
+                months.setdefault(MONTHS[int(str(day)[:2]) - 1], []).append(value)
+            return {m: compact(mean_of(v)) for m, v in months.items()}
         return {k: compact(v) for k, v in x.items() if k not in SPREAD_STATS}
     if isinstance(x, list):
         return [compact(v) for v in x]
     if isinstance(x, float):
-        return round(x, 2)
+        # 2 decimals for ordinary values, but flammability rates are ~0.004:
+        # rounding those to 2 decimals would turn every one of them into 0.0.
+        return round(x, 2) if abs(x) >= 1 else float(f"{x:.4g}")
     return x
 
 
@@ -412,27 +489,75 @@ def get_dataset(uuid: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def get_climate_data(place: str, topic: Topic) -> dict[str, Any]:
+def get_climate_data(place: str, topic: Topic, variables: str = "", operation: str = "",
+                     start_year: int = 0, end_year: int = 0) -> dict[str, Any]:
     """Live numbers from SNAP's Alaska + Arctic Data API (earthmaps.io) for one
     Alaska place: historical and projected temperature and precipitation,
     climate indicators, heating degree days, freezing and thawing indices,
-    permafrost ground temperature and thaw depth, snowfall, wet days.
+    permafrost ground temperature and thaw depth, snowfall, wet days, fire
+    weather indices, modelled flammability and vegetation, and current
+    wildfire conditions.
+
     `place` is an id or name from find_place. Communities give point values;
     areas (boroughs, watersheds, GMUs...) give area means where the topic
-    supports it (temperature_precipitation, climate_indicators). Results
-    include units, the exact query URL and full attribution."""
+    supports it. Three options apply to some topics only; the error says so
+    if they don't fit:
+      variables  comma-separated ids to return, e.g. "fwi,bui" for fire_weather
+                 (bui, dc, dmc, ffmc, fwi, isi). Empty = all of them.
+      operation  how to summarise, for fire_weather:
+                 "summer_fire_danger_rating_days" (default; mean June-August
+                 days per year in each fire danger class) or
+                 "3_day_rolling_average" / "5_day_..." / "7_day_..." (min, mean
+                 and max of the rolling average through the fire season; slower
+                 and larger, summarised here to monthly means).
+      start_year, end_year  the year range a topic needs (fire_weather, 1980-2100).
+
+    Results include units, the exact query URL and full attribution."""
     try:
         p = resolve(place)
         spec = TOPICS[topic]
+        # Options only make sense for some topics; say which, rather than
+        # silently ignoring what the caller asked for.
+        for name, value, allowed in [("variables", variables, spec.get("variables")),
+                                     ("operation", operation, spec.get("operations"))]:
+            if value and not allowed:
+                topics = [t for t, s in TOPICS.items() if s.get(name if name == "variables"
+                                                                else "operations")]
+                return {"error": f"'{topic}' takes no {name}. Topics that do: {topics}"}
+            for item in ([operation] if name == "operation" and value else
+                         [v.strip() for v in value.split(",")] if value else []):
+                if item not in allowed:
+                    return {"error": f"{name} '{item}' is not one of {allowed} for '{topic}'."}
+        years = {}
+        if "years" in spec:
+            first, last = spec["years"]
+            start, end = start_year or spec["default_years"][0], end_year or spec["default_years"][1]
+            if not (first <= start < end <= last):
+                return {"error": f"'{topic}' needs start_year < end_year within "
+                                 f"{first}-{last} (got {start}-{end})."}
+            years = {"start": start, "end": end}
+        elif start_year or end_year:
+            return {"error": f"'{topic}' takes no year range; it returns fixed eras."}
+
         if places.has_point(p):
-            path = spec["point"].format(lat=p["latitude"], lon=p["longitude"])
+            path = spec["point"].format(lat=p["latitude"], lon=p["longitude"], **years)
         elif "area" in spec:
-            path = spec["area"].format(id=p["id"])
+            path = spec["area"].format(id=p["id"], **years)
         else:
             area_topics = [t for t, s in TOPICS.items() if "area" in s]
             return {"error": f"'{topic}' is only available for points, and {p['name']} is an "
                              f"area. Use a community inside it, or one of {area_topics}."}
-        url, data = fetch(path)
+        query = {k: v for k, v in [("vars", variables),
+                                   ("op", operation or spec.get("operations", [""])[0])] if v}
+        if query:
+            path += "?" + urllib.parse.urlencode(query)
+        try:
+            url, data = fetch(path)
+        except urllib.error.HTTPError as e:
+            if e.code == 404 and not places.has_point(p) and spec.get("area_note"):
+                return {"error": f"{API}{path} returned 404. {spec['area_note']}"}
+            raise
+        data = summarize_fires(data) if spec.get("trim") == "fires" else data
         data = compact(data)
         text = json.dumps(data)
         if len(text) > MAX_RESULT_CHARS:
@@ -444,8 +569,9 @@ def get_climate_data(place: str, topic: Topic) -> dict[str, Any]:
         result = {
             "place": place_info(p, with_polygon=False), "topic": topic,
             "about": spec["about"], "units": spec["units"],
-            "processing": "Yearly series averaged by decade and spread statistics "
-                          "(quartiles, std) dropped; values otherwise as returned by the API.",
+            "processing": "Yearly series averaged by decade, day-of-year series by month, "
+                          "spread statistics (quartiles, std) dropped, long feature lists "
+                          "summarised; values otherwise as returned by the API.",
             "data": data,
             "attribution": {
                 "source_query": url,
@@ -453,6 +579,11 @@ def get_climate_data(place: str, topic: Topic) -> dict[str, Any]:
                 "datasets": [dataset_ref(u, titles.get(u)) for u in uuids],
                 "references": dois,
                 "provider": PROVIDER, "license": LICENSE}}
+        for note in ("slow_note", "area_note"):
+            if spec.get(note):
+                result.setdefault("notes", []).append(spec[note])
+        if query:
+            result["query_options"] = query
         if "definitions_from" in spec and isinstance(data, dict):
             result["definitions"] = definitions_from(spec["definitions_from"], set(data))
         return result

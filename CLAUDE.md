@@ -60,7 +60,16 @@ We are prototyping Lane 1 locally with open-source tools only.
   also get their closest `supporting_paper` passage (MCP search_datasets too).
 - `mcp_server.py` (MCP SDK 2.x `MCPServer`; registered in `.mcp.json`):
   tools find_place, search_datasets, get_dataset, get_climate_data (curated
-  earthmaps.io topics, yearly series -> decade means to fit agent context).
+  earthmaps.io topics; yearly series -> decade means, day-of-year -> monthly
+  means, active-fire GeoJSON -> counts + key fields, to fit agent context).
+  Topics now include fire_weather (CMIP6 FWI; needs start_year/end_year, takes
+  variables=bui,dc,dmc,ffmc,fwi,isi and operation=summer_fire_danger_rating_days
+  (default) | {3,5,7}_day_rolling_average; area queries are HUC-only, boroughs
+  and GMUs 404), wildfire_flammability + vegetation_type (ALFRESCO, point query
+  returns the intersecting HUC-12) and wildfire_now (/fire/point, near-real-time
+  danger, AQI, active fires -- not projections). Rolling averages are ~20s and
+  300KB raw; monthly means bring them to ~1.5KB. Small values (flammability
+  ~0.004) are rounded to 4 significant digits, not 2 decimals.
   Alaska places/polygons only. Every result has an attribution block (query
   URL, catalog records + reference DOIs scraped from the API doc pages,
   provider, license); server instructions require a Sources section.
