@@ -8,6 +8,7 @@ Usage:
     python ask_all.py my_questions.txt -k 5
     python ask_all.py --csv results.csv    # also save the table for a spreadsheet
     python ask_all.py --list-datasets      # every dataset title in the index
+    python ask_all.py --papers             # also match papers the datasets cite
 
 Question file: one question per line; blank lines and lines starting with #
 are skipped. To score a question, add " | " and the expected dataset:
@@ -76,6 +77,8 @@ def main():
                    help="print every dataset title in the index, then stop")
     p.add_argument("--spatial", action="store_true",
                    help="for questions naming a place, only datasets whose extent contains it")
+    p.add_argument("--papers", action="store_true",
+                   help="also match the papers datasets cite (after ingest_papers.py)")
     args = p.parse_args()
 
     datasets = all_datasets()
@@ -104,10 +107,11 @@ def main():
     if any(points):
         # A different spatial filter per question, so search them one at a time.
         results = [lane1.search_many([q], k=depth, section=args.section,
-                                     per="dataset", point=pt)[0]
+                                     per="dataset", point=pt, papers=args.papers)[0]
                    for q, pt in zip(questions, points)]
     else:
-        results = lane1.search_many(questions, k=depth, section=args.section, per="dataset")
+        results = lane1.search_many(questions, k=depth, section=args.section, per="dataset",
+                                    papers=args.papers)
 
     # One row per (question, retrieved dataset), top k only.
     rows, scores = [], []   # scores: rank where the expected dataset was found, or None
@@ -120,11 +124,12 @@ def main():
                          "expected": "; ".join(alternatives),
                          "is_expected": is_expected(meta, alternatives),
                          "place": places.label(place) if place else "",
-                         "covers_place": lane1.coverage_mark(meta, place).strip()})
+                         "covers_place": lane1.coverage_mark(meta, place).strip(),
+                         "via_paper": meta.get("citation", "")})
         if alternatives:
-            found = [rank for rank, (_, meta, _) in enumerate(hits, 1)
+            ranks = [rank for rank, (_, meta, _) in enumerate(hits, 1)
                      if is_expected(meta, alternatives)]
-            scores.append(found[0] if found else None)
+            scores.append(ranks[0] if ranks else None)
 
     # ---- print the table: a full-width line per question, then its datasets
     name_w = min(args.width, max((len(r["dataset"]) for r in rows), default=10))
@@ -145,6 +150,8 @@ def main():
             mark += "  ✓ expected" if r["is_expected"] else ""
             print(f"{'':4}{r['rank']:>2}  {name:<{name_w}}  {r['section']:<8}  "
                   f"{r['distance']:>8.3f}{mark}")
+            if r["via_paper"]:
+                print(f"{'':8}via paper: {textwrap.shorten(r['via_paper'], name_w + 20)}")
         if alternatives:
             rank = next(score_iter)
             if rank is None:

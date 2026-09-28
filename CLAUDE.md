@@ -44,6 +44,20 @@ We are prototyping Lane 1 locally with open-source tools only.
   anyway; `lane1.py places "..."` compares the two.
 - `ask_all.py`: runs questions.txt ("question | expected title part"),
   prints table + hit@1/hit@k, place detection, coverage marks, `--spatial`.
+- `list_references.py`: every reference each dataset cites, from record
+  online-resource links (labelled Publication / Suggested citation / Source
+  dataset...), DOIs in record text, and the earthmaps.io doc pages; typed and
+  APA-formatted via doi.org -> references.json. 2026-09-18: 31/62 datasets
+  cite something; 37 refs (29 publications, 5 datasets, 3 other).
+- `ingest_papers.py`: publications -> OpenAlex -> legal OA PDF (pypdf, reference
+  list cut) or abstract or citation -> token chunks -> "papers" collection,
+  metadata links back to citing datasets (dataset_uuids). 2026-09-18: 6 full
+  text (mostly reports), 17 abstract, 6 citation only; many publishers refuse
+  scripted PDF downloads (we don't work around that). `search --papers` /
+  `ask_all.py --papers`: paper matches count for citing datasets after
+  `PAPER_PENALTY` (0.1); unpenalized, two long BOEM reports (~1,750 of ~2,100
+  chunks) swamped results (hit@3 3/6 -> 2/6 on a guessed test key). Datasets
+  also get their closest `supporting_paper` passage (MCP search_datasets too).
 - `mcp_server.py` (MCP SDK 2.x `MCPServer`; registered in `.mcp.json`):
   tools find_place, search_datasets, get_dataset, get_climate_data (curated
   earthmaps.io topics, yearly series -> decade means to fit agent context).

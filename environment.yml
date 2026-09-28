@@ -12,3 +12,4 @@ dependencies:
   - lxml              # used when inspecting raw ISO XML by hand
   - ipython           # nicer interactive shell for poking at records
   - mcp>=2.2          # Model Context Protocol SDK: mcp_server.py exposes tools to Claude
+  - pypdf             # text out of open-access paper PDFs (ingest_papers.py)

@@ -29,6 +29,8 @@ at the University of Alaska Fairbanks, in two "lanes":
 | `lane1.py` | Harvests the catalog over CSW, reads every value in each full ISO record, splits it into token-sized chunks, embeds them with a local MiniLM model into Chroma, and searches them. Also downloads the place-name gazetteer. |
 | `places.py` | Alaska-only gazetteer from `earthmaps.io/places/all`: finds place names in a question (including Indigenous and former names, e.g. *Mamterilleq* = Bethel) and checks whether a dataset's extent covers a place. |
 | `ask_all.py` | Runs every question in `questions.txt` against the index and prints a table; if you add expected answers, it scores hit@1 / hit@k. |
+| `list_references.py` | Lists every academic reference each catalog dataset cites (record links, DOIs in the text, and the Data API's documentation pages), with APA citations from doi.org. Writes `references.json`. |
+| `ingest_papers.py` | Fetches those papers (legal open-access PDFs only; otherwise the abstract or citation), chunks and embeds them, each chunk linked back to the datasets that cite the paper. |
 | `mcp_server.py` | The MCP server: `find_place`, `search_datasets`, `get_dataset`, `get_climate_data`. |
 | `questions.txt` | Example questions to test retrieval with. |
 | `docs/` | A write-up of metadata improvements that would help retrieval (in Comic Sans, by request). |
@@ -104,12 +106,47 @@ When will average temperatures extend the growing season for potatoes? | DOF/DOT
 `python ask_all.py --list-datasets` prints every title in the index to copy from.
 `--spatial` and `--csv results.csv` also work.
 
+### Adding the papers the datasets cite
+
+List every reference each dataset cites (about 40 seconds; writes `references.json`):
+
+```bash
+python list_references.py --csw https://catalog.snap.uaf.edu/geonetwork/srv/eng/csw
+```
+
+Fetch, chunk and embed the publications among them (about a minute; PDFs are
+cached in `./papers/`, and every chunk is written to `paper_chunks.jsonl`):
+
+```bash
+python ingest_papers.py
+```
+
+Only legal open-access copies are downloaded, via [OpenAlex](https://openalex.org).
+Paywalled papers, and servers that refuse scripted downloads, get their abstract
+instead (or just the citation if no abstract is available). The run reports which
+you got for each paper. `--limit 3 --show` prints the chunks for a few papers;
+`--dry-run` embeds nothing.
+
+Then compare the question set with and without papers:
+
+```bash
+python ask_all.py
+python ask_all.py --papers
+```
+
+With `--papers`, a matching passage counts as evidence for every dataset that
+cites the paper, after a distance penalty (`PAPER_PENALTY` in `lane1.py`). Without
+the penalty, a couple of very long reports matched nearly every question and
+crowded out better datasets. Datasets found through their own record also carry
+the closest passage from a paper they cite. `python lane1.py search "..." --papers`
+works too.
+
 ## Lane 2: the MCP server
 
 | Tool | Does |
 |---|---|
 | `find_place` | Alaska communities (points) and areas (polygons: boroughs, watersheds, game management units, protected areas, ethnolinguistic regions...), including Indigenous and former names. |
-| `search_datasets` | Lane 1 search, optionally keeping only datasets that cover a place. |
+| `search_datasets` | Lane 1 search, optionally keeping only datasets that cover a place. Includes passages from the papers each dataset cites (with citation and DOI) once `ingest_papers.py` has run. |
 | `get_dataset` | A dataset's full catalog record: methods, limitations, license, DOIs. |
 | `get_climate_data` | Live values from earthmaps.io for an Alaska place: temperature and precipitation, climate indicators, heating degree days, freezing and thawing indices, permafrost, snowfall, wet days. Yearly series are averaged by decade to fit an agent's context. |
 
@@ -171,6 +208,11 @@ Then ask things like:
   questions need a coverage check, not better embeddings.
 - **CSW quirks:** filter to datasets/series (one ISO 19110 record can fail a
   whole page), and sort results, or paging returns duplicates.
+- **More text isn't automatically better.** Adding the cited papers naively made
+  retrieval worse: two 100+ page reports produced most of the chunks and
+  matched almost everything. Papers work better as supporting evidence, with
+  their matches penalized, than as equal competitors. Their real value was
+  the findings and citations they attach to a dataset.
 - **Keep tool results small.** Some Data API responses are megabytes; decade
   means keep an answer's evidence readable.
 

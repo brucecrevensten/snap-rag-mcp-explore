@@ -45,6 +45,12 @@ ISO_GMD = "http://www.isotc211.org/2005/gmd"
 INDEX_DIR = "./lane1_index"
 COLLECTION = "geonetwork_metadata"
 PLACES_COLLECTION = "places"   # gazetteer, kept apart so places never crowd out datasets
+PAPERS_COLLECTION = "papers"   # papers datasets cite (ingest_papers.py), also kept apart
+# Added to a paper passage's distance before it competes with catalog records.
+# Papers are evidence FOR a dataset, not the dataset itself; long reports have
+# so many chunks that one of them lands near almost any question. Tuned by
+# comparing hit rates with ask_all.py --papers (see README).
+PAPER_PENALTY = 0.1
 OVERLAP_TOKENS = 40   # tokens shared by neighbouring chunks, so a sentence cut
                       # at a chunk boundary still appears whole in one of them
 
@@ -412,7 +418,50 @@ def open_collection(create=False, name=COLLECTION):
                          f"    rm -rf {INDEX_DIR}")
 
 
-def search_many(questions, k=5, section=None, per="section", point=None):
+def paper_hits(questions, n, point=None):
+    """Search the ingested papers (see ingest_papers.py) and turn each matching
+    passage into a hit for every dataset that cites that paper.
+
+    Returns one list of (document, metadata, distance) per question, shaped
+    like dataset hits: the dataset's uuid/title/url/extent, plus section
+    "paper" (or "abstract") and the paper's citation, DOI and page.
+    Empty lists if no papers have been ingested yet.
+    """
+    try:
+        papers = open_collection(name=PAPERS_COLLECTION)
+    except (chromadb.errors.NotFoundError, SystemExit):
+        return [[] for _ in questions]
+    res = papers.query(query_texts=list(questions), n_results=min(n, papers.count()))
+    # What each citing dataset looks like (title, landing URL, extent).
+    cited = sorted({u for metas in res["metadatas"] for m in metas
+                    for u in m["dataset_uuids"].split(",") if u})
+    datasets = {}
+    if cited:
+        for m in open_collection().get(where={"uuid": {"$in": cited}},
+                                       include=["metadatas"])["metadatas"]:
+            datasets.setdefault(m["uuid"], m)
+    results = []
+    for docs, metas, dists in zip(res["documents"], res["metadatas"], res["distances"]):
+        hits = []
+        for doc, m, dist in zip(docs, metas, dists):
+            for uuid in filter(None, m["dataset_uuids"].split(",")):
+                d = datasets.get(uuid)
+                if d is None:
+                    continue                  # cited by a dataset that isn't in the index
+                if point and places.covers(d, *point) is not True:
+                    continue                  # same rule as the dataset filter
+                meta = {k: d[k] for k in ("uuid", "title", "url", "west", "east", "south", "north")
+                        if k in d}
+                meta.update({k: m[k] for k in ("section", "chunk", "n_chunks", "section_text",
+                                               "paper_title", "citation", "doi", "page",
+                                               "full_text")})
+                meta["paper_distance"] = dist          # before the penalty, for display
+                hits.append((doc, meta, dist + PAPER_PENALTY))
+        results.append(hits)
+    return results
+
+
+def search_many(questions, k=5, section=None, per="section", point=None, papers=False):
     """Search for several questions at once; return one result list per question.
 
     Each result is (document, metadata, distance), nearest first.
@@ -421,6 +470,8 @@ def search_many(questions, k=5, section=None, per="section", point=None):
     group. per="section" groups by (dataset, section); per="dataset" by dataset
     alone, which is what you want for "which dataset fits this question?".
     point=(lat, lon): only datasets whose bounding box contains that point.
+    papers=True: also search the papers datasets cite; a matching passage
+    counts as a hit for the citing dataset(s), marked section "paper".
     """
     collection = open_collection()
     conditions = [{"section": section}] if section else []
@@ -435,13 +486,31 @@ def search_many(questions, k=5, section=None, per="section", point=None):
     n = min(k * 10, collection.count())
     # Chroma embeds all the questions in one batch and searches for each.
     res = collection.query(query_texts=list(questions), n_results=n, where=where)
+    # Papers aren't a record section, so a --section filter leaves them out.
+    extra = (paper_hits(questions, n, point) if papers and not section
+             else [[] for _ in questions])
     results = []
-    for docs, metas, dists in zip(res["documents"], res["metadatas"], res["distances"]):
+    for docs, metas, dists, more in zip(res["documents"], res["metadatas"],
+                                        res["distances"], extra):
+        hits = sorted(list(zip(docs, metas, dists)) + more, key=lambda h: h[2])
         best = {}
-        for doc, meta, dist in zip(docs, metas, dists):
+        for doc, meta, dist in hits:
             key = meta["uuid"] if per == "dataset" else (meta["uuid"], meta["section"])
             best.setdefault(key, (doc, meta, dist))   # first seen = nearest
-        results.append(list(best.values())[:k])
+        top = list(best.values())[:k]
+        # Papers as supporting evidence: a dataset found through its own record
+        # still gets the closest passage from a paper it cites, if one matched.
+        closest_paper = {}
+        for doc, meta, dist in more:                  # nearest first
+            closest_paper.setdefault(meta["uuid"], (doc, meta))
+        for _, meta, _ in top:
+            if "citation" not in meta and meta["uuid"] in closest_paper:
+                doc, paper = closest_paper[meta["uuid"]]
+                meta["supporting_paper"] = {
+                    "citation": paper["citation"], "doi": paper["doi"], "page": paper["page"],
+                    "passage": doc.split("\n\n", 1)[-1],
+                    "distance": round(paper["paper_distance"], 3)}
+        results.append(top)
     return results
 
 
@@ -473,11 +542,14 @@ def cmd_search(args):
         print("--spatial: no place with coordinates found in the question; searching everywhere")
     elif point:
         print(f"--spatial: only datasets whose extent contains {point[0]:.3f}, {point[1]:.3f}")
-    hits = search_many([args.question], k=args.k, section=args.section, point=point)[0]
+    hits = search_many([args.question], k=args.k, section=args.section, point=point,
+                       papers=args.papers)[0]
     for rank, (doc, meta, dist) in enumerate(hits, 1):
         print(f"\n#{rank}  distance={dist:.3f}  [{meta['section']}]  {meta['title']}"
               f"{coverage_mark(meta, place)}")
         print(f"    source: {meta['url']}")
+        if "citation" in meta:        # matched a paper this dataset cites
+            print(f"    via {meta['section']} (page {meta['page']}): {meta['citation'][:160]}")
         print(f"    matched chunk {meta['chunk'] + 1} of {meta['n_chunks']}")
         # --brief: just the chunk that matched. Default: the whole section.
         text = doc.split("\n\n", 1)[-1] if args.brief else meta["section_text"]
@@ -551,6 +623,8 @@ def main():
                    help="print only the chunk that matched, not its whole section")
     s.add_argument("--spatial", action="store_true",
                    help="only datasets whose extent contains the place named in the question")
+    s.add_argument("--papers", action="store_true",
+                   help="also match the papers datasets cite (after ingest_papers.py)")
     hp = sub.add_parser("harvest-places",
                         help="download the place-name gazetteer and embed it")
     hp.add_argument("--no-embed", action="store_true",

@@ -284,13 +284,16 @@ Workflow:
    If several places match, say which one you used.
 2. To choose and explain datasets (what they contain, methods, baselines, caveats)
    -> search_datasets (pass the place id to keep only datasets covering it);
-   get_dataset for a full record.
+   get_dataset for a full record. `via_paper` means the dataset was found through
+   a passage of a paper it cites; `supporting_paper` is the closest passage from a
+   paper it cites. Use those passages for findings and methods, and cite the paper.
 3. For numbers -> get_climate_data. Never state a climate value that did not come
    from get_climate_data in this conversation.
 
 Every answer that uses these tools ends with a "Sources" section listing, from the
 tools' attribution blocks: each dataset title with its catalog link, the exact Data
-API query URL(s), reference DOIs, the provider credit, and the license. When giving
+API query URL(s), reference DOIs, any papers you drew on (citation + DOI),
+the provider credit, and the license. When giving
 numbers, state units, model, scenario (RCP/SSP) and era or baseline period, and
 mention relevant caveats or limitations from the dataset records.
 """
@@ -335,28 +338,42 @@ def find_place(name: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def search_datasets(question: str, place: str | None = None, k: int = 5) -> dict[str, Any]:
+def search_datasets(question: str, place: str | None = None, k: int = 5,
+                    include_papers: bool = True) -> dict[str, Any]:
     """Find SNAP/UAF climate datasets that fit a question about Alaska: temperature,
     precipitation, snow, permafrost, sea ice, wildfire, vegetation, hydrology,
     wind, degree days, climate indicators and more. Returns each dataset's title,
     catalog link and the part of its metadata that matched (description, methods,
     usage limits). Give `place` (an id or name from find_place) to keep only
-    datasets whose extent covers that place. Use to choose datasets and to explain
-    methods, scenarios, baselines and caveats; use get_climate_data for numbers."""
+    datasets whose extent covers that place. Also searches the papers the
+    datasets cite (include_papers): a dataset can be found through a passage of
+    its paper, shown in `via_paper` with the paper's citation and DOI. Use to
+    choose datasets and to explain methods, scenarios, baselines, findings and
+    caveats; use get_climate_data for numbers."""
     try:
         p = resolve(place) if place else None
-        hits = lane1.search_many([question], k=k * 3, per="dataset")[0]
+        hits = lane1.search_many([question], k=k * 3, per="dataset", papers=include_papers)[0]
         results = []
         for doc, meta, dist in hits:
             coverage = covers(meta, p)
             if coverage is False:
                 continue
             text = meta["section_text"]
-            results.append({
+            result = {
                 **dataset_ref(meta["uuid"], meta["title"]), "uuid": meta["uuid"],
                 "distance": round(dist, 3), "matched_section": meta["section"],
                 "covers_place": coverage,
-                "text": text if len(text) <= 1500 else text[:1500] + " [...] (get_dataset for all)"})
+                "text": text if len(text) <= 1500 else text[:1500] + " [...] (get_dataset for all)"}
+            if "citation" in meta:     # found through a paper this dataset cites
+                result["via_paper"] = {
+                    "citation": meta["citation"], "page": meta["page"],
+                    "doi": f"https://doi.org/{meta['doi']}" if meta["doi"] else None,
+                    "text_is": "full-text page" if meta["full_text"] else "abstract"}
+            elif "supporting_paper" in meta:   # found via its record; a cited paper also matched
+                sp = meta["supporting_paper"]
+                result["supporting_paper"] = {
+                    **sp, "doi": f"https://doi.org/{sp['doi']}" if sp["doi"] else None}
+            results.append(result)
             if len(results) == k:
                 break
         return {"question": question,

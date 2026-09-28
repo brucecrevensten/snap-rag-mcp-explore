@@ -3,6 +3,10 @@
 lane1_index/
 chunks.jsonl
 places.json
+# ...and by list_references.py / ingest_papers.py (papers/ caches the PDFs)
+references.json
+paper_chunks.jsonl
+papers/
 
 # Scratch space for test runs and temporary outputs
 scratch/
