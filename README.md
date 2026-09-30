@@ -167,9 +167,13 @@ works too.
 | `find_place` | Alaska communities (points) and areas (polygons: boroughs, watersheds, game management units, protected areas, ethnolinguistic regions...), including Indigenous and former names. |
 | `search_datasets` | Lane 1 search, optionally keeping only datasets that cover a place. Includes passages from the papers each dataset cites (with citation and DOI) once `ingest_papers.py` has run, and passages from the Data API's documentation (under `documentation`) once `ingest_api_docs.py` has. |
 | `get_dataset` | A dataset's full catalog record: methods, limitations, license, DOIs. |
-| `get_climate_data` | Live values from earthmaps.io for an Alaska place: temperature and precipitation, climate indicators, heating degree days, freezing and thawing indices, permafrost, snowfall, wet days, CMIP6 fire weather indices, ALFRESCO flammability and vegetation type, and current wildfire conditions. Long series are summarised to fit an agent's context: yearly values by decade, daily fire-season values by month. |
+| `get_climate_data` | Live values from earthmaps.io for an Alaska place. 25 topics covering every service the API offers except CONUS hydrology (not Alaska): temperature and precipitation, climate indicators, degree days, permafrost, snowfall, wet days, elevation, fire weather, flammability, vegetation, spruce beetle risk, hydrology, monthly and downscaled-daily CMIP6, ERA5-WRF reanalysis, temperature anomalies, sea ice, landfast ice, current wildfire conditions, landslide monitoring, community demographics and stream hydrology. Long series are summarised to fit an agent's context: yearly to decades, monthly to years, daily to months. |
 
-Some topics take options: `fire_weather` needs a year range (`start_year`,
+Some topics take options, and asking for one a topic doesn't have returns an
+error naming the topics that do. `variables` narrows what comes back (and is
+worth setting: `hydrology` without it is 147 KB), `scenario` picks an SSP,
+`start_year`/`end_year` set a window, `stream_id` addresses a stream segment,
+and `operation` chooses a summary. For example, `fire_weather` needs a year range (`start_year`,
 `end_year`, within 1980-2100) and accepts `variables` (any of `bui`, `dc`,
 `dmc`, `ffmc`, `fwi`, `isi`) and `operation`
 (`summer_fire_danger_rating_days`, the default, or a 3/5/7-day rolling

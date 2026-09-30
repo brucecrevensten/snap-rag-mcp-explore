@@ -140,6 +140,115 @@ TOPICS = {
         "units": "percent of area per vegetation type",
         "point": "/alfresco/veg_type/local/{lat}/{lon}",
         "area": "/alfresco/veg_type/area/{id}", "doc": "/alfresco/"},
+    "elevation": {
+        "about": "Elevation from the ASTER Global Digital Elevation Model, resampled from "
+                 "30 m to 1 km: minimum, maximum and mean for the point or area.",
+        "units": "metres above sea level (0 = sea level)",
+        "point": "/elevation/point/{lat}/{lon}", "area": "/elevation/area/{id}",
+        "doc": "/elevation/"},
+    "spruce_beetle_risk": {
+        "about": "Modelled climate protection against spruce beetle outbreaks at ~12 km, "
+                 "for low and medium snowpack cases: historical 1988-2017 (Daymet) and "
+                 "30-year eras 2010-2099 (NCAR-CCSM4, GFDL-ESM2M and others, RCP 4.5 and "
+                 "8.5). Values are categories, not numbers.",
+        "units": "climate protection level (e.g. high / minimal)",
+        "point": "/beetles/point/{lat}/{lon}", "area": "/beetles/area/{id}",
+        "doc": "/beetles/"},
+    "temperature_anomalies": {
+        "about": "Annual mean surface air temperature anomaly against a 1951-1980 "
+                 "baseline: Berkeley Earth for the historical period, CMIP6 models for "
+                 "projections. Yearly values are summarised to decade means.",
+        "units": "°C difference from the 1951-1980 mean",
+        "point": "/temperature_anomalies/point/{lat}/{lon}", "doc": "/temperature_anomalies/"},
+    "sea_ice_concentration": {
+        "about": "Monthly pan-Arctic sea ice concentration, 1850-2021, about 17 km "
+                 "(Walsh et al.). Monthly values are summarised to annual means. Only "
+                 "meaningful for coastal and ocean points.",
+        "units": "percent sea ice concentration",
+        "point": "/seaice/point/{lat}/{lon}", "doc": "/seaice/", "ocean_point": True,
+        "years": (1850, 2021), "default_years": (1990, 2021), "years_client_side": True},
+    "demographics": {
+        "about": "Community-level indicators for Alaska communities from the 2020 US "
+                 "Census, the 2019-2023 ACS, and CDC PLACES / Non-Medical Factor "
+                 "measures: population, age bands, race, disability, health conditions, "
+                 "broadband and other social factors. Context for adaptation planning, "
+                 "not climate data. Some communities report their borough's figures; the "
+                 "response says so in `comment`.",
+        "units": "counts and percentages (pct_* fields)",
+        "path": "/demographics/{id}", "doc": "/demographics/"},
+    "hydrology": {
+        "about": "Variable Infiltration Capacity (VIC) model at 12 km, decadal summaries "
+                 "by month for CMIP5 models under RCP 4.5 and 8.5: min, mean and max "
+                 "across decades. Pick variables to keep the answer small.",
+        "units": "evap, pcp, runoff, snow_melt, swe, iwe, glacier_melt, sm1-sm3: mm",
+        "point": "/hydrology/point/{lat}/{lon}", "doc": "/hydrology/",
+        "fixed_query": {"summarize": "mmm"},
+        "variables": ["evap", "glacier_melt", "iwe", "pcp", "runoff", "sm1", "sm2", "sm3",
+                      "snow_melt", "swe"]},
+    "cmip6_monthly": {
+        "about": "Monthly CMIP6 values, pan-Arctic, 1950-2100, for 14 models (including "
+                 "an Ensemble mean) under ssp126, ssp245, ssp370 and ssp585. Needs a year "
+                 "range; monthly values are summarised to annual means.",
+        "units": "tas/tasmax/tasmin/ts °C, pr/prsn mm, sfcWind m/s, clt %, others per CF",
+        "point": "/cmip6/point/{lat}/{lon}/{start}/{end}", "doc": "/cmip6/",
+        "years": (1950, 2100), "default_years": (2030, 2050),
+        "variables": ["clt", "evspsbl", "hfls", "hfss", "pr", "prsn", "psl", "rlds", "rsds",
+                      "sfcWind", "snw", "tas", "tasmax", "tasmin", "ts"],
+        "vars_param": True,
+        "scenarios": ["ssp126", "ssp245", "ssp370", "ssp585"], "default_scenario": "ssp585",
+        "scenarios_client_side": True},
+    "cmip6_downscaled_daily": {
+        "about": "Daily CMIP6 data bias-adjusted and downscaled to 4 km against ERA5-WRF, "
+                 "1965-2100. This topic uses the 7-model average; choose a scenario and "
+                 "variables. Daily values are summarised to monthly means.",
+        "units": "tasmax, tasmin: °C; pr: mm",
+        "point": "/cmip6_downscaled/point/{lat}/{lon}", "doc": "/cmip6_downscaled/",
+        "fixed_query": {"models": "7ModelAvg"},
+        "variables": ["pr", "tasmax", "tasmin"], "vars_param": True,
+        "scenarios": ["historical", "ssp126", "ssp245", "ssp370", "ssp585"],
+        "default_scenario": "ssp585",
+        "years": (1965, 2100), "default_years": (2040, 2060), "years_client_side": True,
+        "slow_note": "Unfiltered this endpoint returns ~4.5 MB and takes minutes; the "
+                     "model average, one scenario and a short year range keep it quick."},
+    "era5wrf_daily": {
+        "about": "ERA5 reanalysis dynamically downscaled with WRF to 4 km, daily "
+                 "1960-2023: temperature, humidity, precipitation, wind and sea ice. "
+                 "Daily values are summarised to monthly means; pick variables and a "
+                 "year range.",
+        "units": "t2_*: °C; rh2_*: %; rainnc_sum: mm; wspd10_*: m/s; wdir10_mean: degrees; "
+                 "seaice_max: fraction",
+        "point": "/era5wrf/point/{lat}/{lon}", "area": "/era5wrf/area/{id}",
+        "doc": "/era5wrf/",
+        "variables": ["t2_max", "t2_mean", "t2_min", "rh2_max", "rh2_mean", "rh2_min",
+                      "rainnc_sum", "wspd10_max", "wspd10_mean", "wdir10_mean", "seaice_max"],
+        "vars_param": True,
+        "years": (1960, 2023), "default_years": (2014, 2023), "years_client_side": True},
+    "landfast_ice": {
+        "about": "Daily landfast sea ice at 100 m along the Beaufort and Chukchi coasts, "
+                 "October 1996 - July 2023, summarised here to the fraction of days per "
+                 "month with landfast ice present. Land cells are dropped.",
+        "units": "fraction of days with landfast ice (1 = every day)",
+        "point": "/landfastice/point/{lat}/{lon}", "doc": "/landfastice/", "trim": "landfast",
+        "ocean_point": True,
+        "slow_note": "Only the Beaufort and Chukchi coastal strips are covered; inland "
+                     "points return nothing useful."},
+    "landslide_risk": {
+        "about": "Rain-triggered landslide risk monitoring in Southeast Alaska: current "
+                 "and accumulated precipitation with risk probabilities. Only Craig "
+                 "(AK91) and Kasaan (AK182) are instrumented.",
+        "units": "precipitation as reported by the station; risk as a probability",
+        "path": "/landslide/{id}", "doc": "/landslide/", "place_ids": ["AK91", "AK182"]},
+    "stream_hydrology": {
+        "about": "Modelled streamflow and water temperature for 34,346 MERIT Hydro stream "
+                 "segments in Alaska and Canada (RASM with downscaled CMIP6, 1990-2021 "
+                 "and mid-century; ERA5 baseline). Keyed by stream segment, not by place: "
+                 "pass `stream_id`. Choose statistics or climatology with `operation`.",
+        "units": "streamflow statistics (various); water temperature °C",
+        "stream": "/arctic_hydrology/{operation}/{stream_id}", "doc": "/arctic_hydrology/",
+        "operations": ["stats", "modeled_climatology", "wt_stats", "wt_modeled_climatology"],
+        "slow_note": "The API has no stream-segment lookup yet (its own docs say TBD), so "
+                     "a segment id has to come from elsewhere; places can't be mapped to "
+                     "segments here."},
     "wildfire_now": {
         "about": "Near-real-time wildfire conditions at a point (NOT climate "
                  "projections): today's fire danger rating and snow cover, PM2.5 air "
@@ -273,6 +382,8 @@ def covers(meta, p):
 # ------------------------------------------------- shrinking API responses
 
 YEAR = re.compile(r"^\d{4}$")
+YEAR_MONTH = re.compile(r"^(\d{4})-(\d{2})$")
+DATE = re.compile(r"^(\d{4}-\d{2})-\d{2}$")
 DAY_OF_YEAR = re.compile(r"^\d{2}-\d{2}$")
 MONTHS = ["January", "February", "March", "April", "May", "June",
           "July", "August", "September", "October", "November", "December"]
@@ -311,16 +422,62 @@ def mean_of(values):
     return values[0] if values else None
 
 
+def group_by(mapping, key_of):
+    """{key: mean of the values whose key maps to it}, keeping order."""
+    groups = {}
+    for k, v in mapping.items():
+        groups.setdefault(key_of(str(k)), []).append(v)
+    return {k: mean_of(v) for k, v in groups.items()}
+
+
+def landfast_presence(data):
+    """Landfast ice is coded 255 (ice), 0 (no ice) and 128 (land). As 1 / 0 /
+    dropped, a monthly mean reads as 'fraction of days with landfast ice'."""
+    if not isinstance(data, dict):
+        return data
+    return {k: (1 if v == 255 else 0) for k, v in data.items() if v != 128}
+
+
+def select_variables(x, wanted):
+    """Keep only the wanted variable keys, wherever they sit in the response
+    (the APIs nest them differently: model/scenario/month/var, date/var, ...)."""
+    if not isinstance(x, dict):
+        return x
+    if any(k in wanted for k in x):
+        return {k: v for k, v in x.items() if k in wanted}
+    return {k: select_variables(v, wanted) for k, v in x.items()}
+
+
+def select_years(x, first, last):
+    """Keep only keys that are dates inside the year range, at whatever depth
+    they appear. Used where the endpoint has no year parameters of its own."""
+    if not isinstance(x, dict):
+        return x
+    def year_of(key):
+        m = re.match(r"^(\d{4})(?:[-_]|$)", str(key))
+        return int(m.group(1)) if m else None
+    years = [year_of(k) for k in x]
+    if years and all(y is not None for y in years):
+        return {k: v for k, v in x.items() if first <= year_of(k) <= last}
+    return {k: select_years(v, first, last) for k, v in x.items()}
+
+
 def compact(x):
     """Make a response fit an agent's context without changing what it says:
     long yearly series become decade means, day-of-year series become monthly
     means, spread statistics are dropped (min/mean/max kept), numbers rounded."""
     if isinstance(x, dict):
-        if len(x) > 20 and all(YEAR.match(str(k)) for k in x):
+        if len(x) > 40 and all(YEAR.match(str(k)) for k in x):
             decades = {}
             for year, value in x.items():
                 decades.setdefault(f"{str(year)[:3]}0s", []).append(value)
             return {d: compact(mean_of(v)) for d, v in decades.items()}
+        if len(x) > 60 and all(DATE.match(str(k)) for k in x):
+            # Daily series (era5wrf, downscaled CMIP6, landfast ice): monthly means.
+            return compact(group_by(x, lambda k: DATE.match(k).group(1)))
+        if len(x) > 24 and all(YEAR_MONTH.match(str(k)) for k in x):
+            # Monthly series (CMIP6, sea ice): annual means.
+            return compact(group_by(x, lambda k: YEAR_MONTH.match(k).group(1)))
         if len(x) > 20 and all(DAY_OF_YEAR.match(str(k)) for k in x):
             # Fire weather gives every day from 04-01 to 10-31, per model and
             # index: hundreds of kilobytes. Monthly means say the same thing.
@@ -500,49 +657,63 @@ def get_dataset(uuid: str) -> dict[str, Any]:
 
 
 @mcp.tool()
-def get_climate_data(place: str, topic: Topic, variables: str = "", operation: str = "",
-                     start_year: int = 0, end_year: int = 0) -> dict[str, Any]:
+def get_climate_data(place: str = "", topic: Topic = "temperature_precipitation",
+                     variables: str = "", operation: str = "", scenario: str = "",
+                     start_year: int = 0, end_year: int = 0,
+                     stream_id: str = "") -> dict[str, Any]:
     """Live numbers from SNAP's Alaska + Arctic Data API (earthmaps.io) for one
-    Alaska place: historical and projected temperature and precipitation,
-    climate indicators, heating degree days, freezing and thawing indices,
-    permafrost ground temperature and thaw depth, snowfall, wet days, fire
-    weather indices, modelled flammability and vegetation, and current
-    wildfire conditions.
+    Alaska place. Topics cover temperature and precipitation, climate
+    indicators, degree days, permafrost, snowfall, wet days, elevation, sea ice,
+    fire weather, flammability and vegetation, spruce beetle risk, hydrology,
+    CMIP6 (monthly and downscaled daily), ERA5-WRF reanalysis, temperature
+    anomalies, landfast ice, current wildfire conditions, landslide monitoring,
+    community demographics, and stream hydrology.
 
     `place` is an id or name from find_place. Communities give point values;
     areas (boroughs, watersheds, GMUs...) give area means where the topic
-    supports it. Three options apply to some topics only; the error says so
-    if they don't fit:
-      variables  comma-separated ids to return, e.g. "fwi,bui" for fire_weather
-                 (bui, dc, dmc, ffmc, fwi, isi). Empty = all of them.
-      operation  how to summarise, for fire_weather:
-                 "summer_fire_danger_rating_days" (default; mean June-August
-                 days per year in each fire danger class) or
-                 "3_day_rolling_average" / "5_day_..." / "7_day_..." (min, mean
-                 and max of the rolling average through the fire season; slower
-                 and larger, summarised here to monthly means).
-      start_year, end_year  the year range a topic needs (fire_weather, 1980-2100).
+    supports it. Options apply to some topics only, and the error says which
+    topics take them:
+      variables   comma-separated ids to return, e.g. "fwi,bui" (fire_weather),
+                  "tas,pr" (cmip6_monthly), "t2_mean" (era5wrf_daily),
+                  "runoff,swe" (hydrology). Empty = all. Worth setting: these
+                  endpoints are large.
+      operation   how to summarise: fire_weather takes
+                  "summer_fire_danger_rating_days" (default) or
+                  "3_day_rolling_average" / "5_day_..." / "7_day_...";
+                  stream_hydrology takes "stats", "modeled_climatology",
+                  "wt_stats" or "wt_modeled_climatology".
+      scenario    for cmip6_downscaled_daily: historical, ssp126, ssp245,
+                  ssp370 or ssp585 (default ssp585).
+      start_year, end_year  for topics with a year range (fire_weather
+                  1980-2100, cmip6_monthly 1950-2100, cmip6_downscaled_daily
+                  1965-2100, era5wrf_daily 1960-2023).
+      stream_id   for stream_hydrology only, which is keyed by MERIT Hydro
+                  stream segment rather than by place.
 
-    Results include units, the exact query URL and full attribution."""
+    Long series are summarised: yearly to decades, monthly to years, daily to
+    months. Results include units, the exact query URL and full attribution."""
     try:
-        p = resolve(place)
         spec = TOPICS[topic]
         # Options only make sense for some topics; say which, rather than
         # silently ignoring what the caller asked for.
         for name, value, allowed in [("variables", variables, spec.get("variables")),
-                                     ("operation", operation, spec.get("operations"))]:
+                                     ("operation", operation, spec.get("operations")),
+                                     ("scenario", scenario, spec.get("scenarios"))]:
             if value and not allowed:
-                topics = [t for t, s in TOPICS.items() if s.get(name if name == "variables"
-                                                                else "operations")]
-                return {"error": f"'{topic}' takes no {name}. Topics that do: {topics}"}
-            for item in ([operation] if name == "operation" and value else
-                         [v.strip() for v in value.split(",")] if value else []):
+                takes = [t for t, sp in TOPICS.items() if sp.get(
+                    {"variables": "variables", "operation": "operations",
+                     "scenario": "scenarios"}[name])]
+                return {"error": f"'{topic}' takes no {name}. Topics that do: {takes}"}
+            for item in ([v.strip() for v in value.split(",")] if name == "variables" and value
+                         else [value] if value else []):
                 if item not in allowed:
                     return {"error": f"{name} '{item}' is not one of {allowed} for '{topic}'."}
+
         years = {}
         if "years" in spec:
             first, last = spec["years"]
-            start, end = start_year or spec["default_years"][0], end_year or spec["default_years"][1]
+            start = start_year or spec["default_years"][0]
+            end = end_year or spec["default_years"][1]
             if not (first <= start < end <= last):
                 return {"error": f"'{topic}' needs start_year < end_year within "
                                  f"{first}-{last} (got {start}-{end})."}
@@ -550,39 +721,105 @@ def get_climate_data(place: str, topic: Topic, variables: str = "", operation: s
         elif start_year or end_year:
             return {"error": f"'{topic}' takes no year range; it returns fixed eras."}
 
-        if places.has_point(p):
-            path = spec["point"].format(lat=p["latitude"], lon=p["longitude"], **years)
-        elif "area" in spec:
-            path = spec["area"].format(id=p["id"], **years)
+        # Where the numbers come from: a stream segment, a community id, a
+        # point, or an area polygon.
+        p, queried_point = None, None
+        if "stream" in spec:
+            if not stream_id.strip():
+                return {"error": f"'{topic}' needs a stream_id. {spec.get('slow_note', '')}"}
+            path = spec["stream"].format(stream_id=stream_id.strip(),
+                                         operation=operation or spec["operations"][0])
         else:
-            area_topics = [t for t, s in TOPICS.items() if "area" in s]
-            return {"error": f"'{topic}' is only available for points, and {p['name']} is an "
-                             f"area. Use a community inside it, or one of {area_topics}."}
-        query = {k: v for k, v in [("vars", variables),
-                                   ("op", operation or spec.get("operations", [""])[0])] if v}
+            p = resolve(place)
+            if "place_ids" in spec and p["id"] not in spec["place_ids"]:
+                named = [f"{i} ({places_by_id()[i]['name']})" for i in spec["place_ids"]
+                         if i in places_by_id()]
+                return {"error": f"'{topic}' only covers {', '.join(named)}; "
+                                 f"{p['name']} isn't one of them."}
+            if "path" in spec:
+                if not places.has_point(p):
+                    return {"error": f"'{topic}' is per community, and {p['name']} is an "
+                                     f"area. Use a community inside it."}
+                path = spec["path"].format(id=p["id"])
+            elif places.has_point(p):
+                lat, lon = p["latitude"], p["longitude"]
+                if spec.get("ocean_point"):
+                    # Sea ice lives offshore: a community's own coordinates are a
+                    # land cell. Coastal places carry a nearby ocean point --
+                    # but so do inland ones (Two Rivers' is 400 km away in
+                    # Prince William Sound), so check is_coastal first.
+                    if not (p.get("is_coastal") and p.get("ocean_lat1")):
+                        return {"error": f"'{topic}' is measured offshore and {p['name']} is "
+                                         f"not a coastal community."}
+                    lat, lon = p["ocean_lat1"], p["ocean_lon1"]
+                    queried_point = {"latitude": lat, "longitude": lon,
+                                     "note": "the community's offshore point, since the "
+                                             "community itself sits on a land grid cell"}
+                path = spec["point"].format(lat=lat, lon=lon, **years)
+            elif "area" in spec:
+                path = spec["area"].format(id=p["id"], **years)
+            else:
+                area_topics = [t for t, sp in TOPICS.items() if "area" in sp]
+                return {"error": f"'{topic}' is only available for points, and {p['name']} is "
+                                 f"an area. Use a community inside it, or one of {area_topics}."}
+
+        query = dict(spec.get("fixed_query", {}))
+        if spec.get("operations") and "stream" not in spec:
+            query["op"] = operation or spec["operations"][0]
+        if spec.get("vars_param") and variables:
+            query["vars"] = variables
+        if spec.get("scenarios"):
+            query["scenarios"] = scenario or spec["default_scenario"]
         if query:
             path += "?" + urllib.parse.urlencode(query)
+
         try:
             url, data = fetch(path)
         except urllib.error.HTTPError as e:
-            if e.code == 404 and not places.has_point(p) and spec.get("area_note"):
+            if e.code == 404 and p is not None and not places.has_point(p) and spec.get("area_note"):
                 return {"error": f"{API}{path} returned 404. {spec['area_note']}"}
+            if e.code == 422 and spec.get("ocean_point"):
+                return {"error": f"{API}{path} rejected that point: it is outside this "
+                                 f"dataset's coverage."}
             raise
+
+        # Filtering the endpoint can't do itself.
+        if variables and not spec.get("vars_param"):
+            data = select_variables(data, {v.strip() for v in variables.split(",")})
+        if years and spec.get("years_client_side"):
+            data = select_years(data, years["start"], years["end"])
+        if scenario or spec.get("scenarios_client_side"):
+            if spec.get("scenarios_client_side"):
+                data = select_variables(data, {scenario or spec["default_scenario"]})
+        if spec.get("trim") == "landfast":
+            data = landfast_presence(data)
+            if not data:
+                return {"error": f"No landfast ice data at that point: it is a land cell or "
+                                 f"outside the Beaufort/Chukchi coverage.",
+                        "source_query": API + path}
         data = summarize_fires(data) if spec.get("trim") == "fires" else data
         data = compact(data)
         text = json.dumps(data)
         if len(text) > MAX_RESULT_CHARS:
-            data = {"too_large": f"{len(text):,} characters after compaction; open the "
-                                 f"source query URL to see it all.",
+            narrow = [o for o in ("variables", "start_year/end_year", "scenario")
+                      if (o == "variables" and spec.get("variables"))
+                      or (o == "start_year/end_year" and spec.get("years"))
+                      or (o == "scenario" and spec.get("scenarios"))]
+            data = {"too_large": f"{len(text):,} characters after summarising. "
+                                 + (f"Narrow it with {', '.join(narrow)}. " if narrow else "")
+                                 + "Or open the source query URL to see it all.",
                     "keys": list(data) if isinstance(data, dict) else None}
         uuids, dois = doc_sources(spec["doc"])
         titles = titles_for(uuids)
         result = {
-            "place": place_info(p, with_polygon=False), "topic": topic,
+            "place": place_info(p, with_polygon=False) if p else {"stream_id": stream_id},
+            "topic": topic,
             "about": spec["about"], "units": spec["units"],
-            "processing": "Yearly series averaged by decade, day-of-year series by month, "
-                          "spread statistics (quartiles, std) dropped, long feature lists "
-                          "summarised; values otherwise as returned by the API.",
+            "processing": "Summarised to fit an agent's context: yearly series to decade "
+                          "means, monthly to annual means, daily to monthly means, "
+                          "day-of-year to monthly means; spread statistics (quartiles, std) "
+                          "dropped and long feature lists shortened. Values otherwise as "
+                          "returned by the API.",
             "data": data,
             "attribution": {
                 "source_query": url,
@@ -595,6 +832,8 @@ def get_climate_data(place: str, topic: Topic, variables: str = "", operation: s
                 result.setdefault("notes", []).append(spec[note])
         if query:
             result["query_options"] = query
+        if queried_point:
+            result["queried_point"] = queried_point
         if "definitions_from" in spec and isinstance(data, dict):
             result["definitions"] = definitions_from(spec["definitions_from"], set(data))
         return result

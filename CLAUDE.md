@@ -76,6 +76,17 @@ We are prototyping Lane 1 locally with open-source tools only.
   danger, AQI, active fires -- not projections). Rolling averages are ~20s and
   300KB raw; monthly means bring them to ~1.5KB. Small values (flammability
   ~0.004) are rounded to 4 significant digits, not 2 decimals.
+  All 24 Alaska-relevant API services are now topics (25 topics; conus_hydrology
+  left out as non-Alaska). Options: variables / scenario / start_year+end_year /
+  operation / stream_id, validated per topic. Sizes handled by compaction
+  (monthly->annual over 24 keys, daily->monthly over 60, yearly->decades over 40)
+  plus client-side filtering where the endpoint has no parameter (hydrology vars,
+  cmip6 scenario, era5wrf + cmip6_downscaled year windows). Gotchas found:
+  cmip6_downscaled needs models=7ModelAvg (docs say 6ModelAvg -> 422) or it is
+  4.5MB/271s; sea ice and landfast ice must use a coastal community's
+  ocean_lat1/lon1 (own coords are land cells) and inland places carry a useless
+  far-away ocean point, so gate on is_coastal; arctic_hydrology is keyed by
+  MERIT stream segment and the API has no lookup yet (docs say TBD).
   Alaska places/polygons only. Every result has an attribution block (query
   URL, catalog records + reference DOIs scraped from the API doc pages,
   provider, license); server instructions require a Sources section.
